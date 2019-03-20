@@ -1,6 +1,8 @@
 #include "ft_strace.h"
 #include <errno.h>
 
+#define ERESTARTSYS 512
+
 const char *error2name(int errnum)
 {
 		switch (errnum) {
@@ -128,6 +130,7 @@ const char *error2name(int errnum)
 				CASE(EDQUOT);
 				CASE(ENOMEDIUM);
 				CASE(EMEDIUMTYPE);
+				CASE(ERESTARTSYS);
 				default:
 				return ("Undefined error");
 		}
@@ -257,8 +260,9 @@ const char *error2description(int errnum)
 				case(EDQUOT): return("Quota exceeded");
 				case(ENOMEDIUM): return("No medium found");
 				case(EMEDIUMTYPE): return("Wrong medium type");
+				case(ERESTARTSYS): return("To be restarted if SA_RESTART is set");
 				default:
-								   return ("undefined descrption");
+								   return ("undefined description");
 		}
 }
 
@@ -266,6 +270,12 @@ char		*get_error(unsigned long long int reg)
 {
 		char	*ret;
 
+		if (-reg == ERESTARTSYS)
+		{
+			if (!(asprintf(&ret, "? %s (%s)", error2name(-reg), error2description(-reg))))
+				return (NULL);
+			return (ret);
+		}
 		if (!(asprintf(&ret, "%d %s (%s)", -1, error2name(-reg), error2description(-reg))))
 			return (NULL);
 		return (ret);
