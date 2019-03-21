@@ -270,6 +270,12 @@ char		*get_error(unsigned long long int reg)
 {
 		char	*ret;
 
+		if ((unsigned int)reg == 0xfffffdfc)
+		{
+			if (!(asprintf(&ret, "? %s (%s)", error2name(ERESTARTSYS), error2description(ERESTARTSYS))))
+				return (NULL);
+			return (ret);
+		}
 		if (-reg == ERESTARTSYS)
 		{
 			if (!(asprintf(&ret, "? %s (%s)", error2name(-reg), error2description(-reg))))

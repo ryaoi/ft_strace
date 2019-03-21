@@ -226,12 +226,12 @@ static void					trace_process(char *argv[], \
             if (sys == sys64)
             {
             	if ((regs.orig_rax >= (sizeof(sys64) / sizeof(sys[0]))) || sys[index_sys].name == NULL)
-            		continue;
+            		exit(EXIT_FAILURE);
             }
             else
             {
             	if ((regs.orig_rax >= (sizeof(sys32) / sizeof(sys[0]))) || sys[index_sys].name == NULL)
-            		continue;
+            		exit(EXIT_FAILURE);
             }
             if (strcmp(sys[index_sys].name, "read") == 0 \
             	|| strcmp(sys[index_sys].name, "getdents") == 0) //read or getdents
@@ -248,7 +248,7 @@ static void					trace_process(char *argv[], \
             		continue ;
 			    ptrace(PTRACE_GETREGS, child, NULL, &regs);
             }
-            if ((long long int)regs.rax >= 0 || strcmp(sys[index_sys].name, "exit_group") == 0)
+            if ((long long int)regs.rax >= 0)
 				ret = get_format(sys[index_sys].ret, regs.rax, child);
 			else
 				ret = get_error(regs.rax);

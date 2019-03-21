@@ -74,10 +74,70 @@ const char *code2name(int code)
 	}
 }
 
+/*
+#define SEGV_MAPERR	1	
+#define SEGV_ACCERR	2	
+#define SEGV_BNDERR	3
+#ifdef __ia64__
+# define __SEGV_PSTKOVF	4	
+#else
+# define SEGV_PKUERR	4	
+#endif
+#define SEGV_ACCADI	5	
+#define SEGV_ADIDERR	6	
+#define SEGV_ADIPERR	7	
+#define NSIGSEGV	7
+*/
+
+const char *segvcode2name(int code)
+{
+	switch (code){
+	CASE(SEGV_MAPERR);
+	CASE(SEGV_ACCERR);
+	CASE(SEGV_BNDERR);
+	CASE(SEGV_PKUERR);
+	//CASE(SEGV_ACCADI);
+	//CASE(SEGV_ADIDERR);
+	//CASE(SEGV_ADIPERR);
+	//CASE(NSIGSEGV);
+	default:
+		return ("Undefined code");
+	}
+}
+
+static void	print_syscall_sig(pid_t child, int status, const t_sys sys[], \
+							siginfo_t sig)
+{
+	int printed;
+	char *ret;
+	unsigned long long int sys_index;
+	struct user_regs_struct regs;
+
+	ptrace(PTRACE_SYSCALL, child, NULL, sig.si_signo);
+	waitpid(child, &status, 0);
+	ptrace(PTRACE_GETREGS, child, NULL, &regs);
+	sys_index = regs.orig_rax;
+	printed = (*(sys[regs.orig_rax].handler))(child, regs, sys[regs.orig_rax]);
+	ptrace(PTRACE_SYSCALL, child, NULL, sig.si_signo);
+	waitpid(child, &status, 0);
+	ptrace(PTRACE_GETREGS, child, NULL, &regs);
+	if ((long long int)regs.rax >= 0)
+		ret = get_format(sys[sys_index].ret, regs.rax, child);
+	else
+		ret = get_error(regs.rax);
+	if (printed > 40)
+		dprintf(2, " = %s\n", ret);
+	else
+		dprintf(2, "%*c = %s\n", 40 - printed, ' ', ret);
+	if (ret)
+		free(ret);
+	ptrace(PTRACE_SYSCALL, child, NULL, sig.si_signo);
+	waitpid(child, &status, 0);
+}
+
 int			handle_signal(pid_t child, int status, const t_sys sys[])
 {
 	siginfo_t	sig;
-	struct user_regs_struct regs;
 
 	if (WIFEXITED(status))
 	{
@@ -100,14 +160,24 @@ int			handle_signal(pid_t child, int status, const t_sys sys[])
 				dprintf(2, "--- %s {si_signo=%s, si_code=%s, si_pid=%d, si_uid=%d, si_status=%d, si_utime=%ld, si_stime=%ld} ---\n", \
 						signal2name(sig.si_signo), signal2name(sig.si_signo), childcode2name(sig.si_code), \
 						sig.si_pid, sig.si_uid, sig.si_status, sig.si_utime, sig.si_stime);
+				//print_syscall_sig(child, status, sys, sig);
 				return (1);
 			}
-			else if (sig.si_signo == SIGINT || sig.si_signo == SIGTSTP || sig.si_signo == SIGCONT)
-			//else if (sig.si_signo == SIGTSTP || sig.si_signo == SIGCONT)
+			else if (sig.si_signo == SIGSEGV)
+			{
+				dprintf(2, "--- %s {si_signo=%s, si_code=%s, si_addr=%p} ---\n", \
+					signal2name(sig.si_signo), signal2name(sig.si_signo), segvcode2name(sig.si_code), \
+					sig.si_addr);
+				dprintf(2, "+++ killed by %s +++\nSegmentation fault\n", signal2name(WSTOPSIG(status)));
+				exit(sig.si_status);
+			}
+			else if (sig.si_signo == SIGINT || sig.si_signo == SIGTSTP \
+						|| sig.si_signo == SIGCONT)
 			{
 				dprintf(2, "--- %s {si_signo=%s, si_code=%s} ---\n", \
 						signal2name(sig.si_signo), signal2name(sig.si_signo), code2name(sig.si_code));
-				(void)regs;
+				if (sig.si_signo == SIGINT)
+					print_syscall_sig(child, status, sys, sig);
 				return (1);
 			}
 			else
@@ -115,17 +185,15 @@ int			handle_signal(pid_t child, int status, const t_sys sys[])
 				dprintf(2, "--- %s {si_signo=%s, si_code=%s, si_pid=%d, si_uid=%d} ---\n", \
 						signal2name(sig.si_signo), signal2name(sig.si_signo), code2name(sig.si_code), \
 						sig.si_pid, sig.si_uid);
+				if (sig.si_signo == SIGWINCH)
+				{
+					print_syscall_sig(child, status, sys, sig);
+					return (1);
+				}
 				dprintf(2, "+++ killed by %s +++\n", signal2name(WSTOPSIG(status)));
-				exit(0);
+				exit(sig.si_status);
 			}
-//			ptrace(PTRACE_SYSCALL, child, NULL, NULL);
-//			ptrace(PTRACE_GETREGS, child, NULL, &regs);
-			(void)sys;
-//			printf("relaunch syscall :%hd!\n", (short)regs.orig_rax);
-//			int printed = (*(sys[(int)regs.orig_rax].handler))(child, regs, sys[(int)regs.orig_rax]);
-//			printf("printed:%d\n", printed);
 		}
-//		return (1);
 	}
 	return (0);
 }
