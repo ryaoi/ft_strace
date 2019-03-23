@@ -2,6 +2,13 @@
 #include <errno.h>
 
 #define ERESTARTSYS 512
+#define ERESTARTNOINTR	513
+#define ERESTARTNOHAND	514	/* restart if no handler.. */
+#define ENOIOCTLCMD	515	/* No ioctl command */
+#define ERESTART_RESTARTBLOCK 516 /* restart by calling sys_restart_syscall */
+#define EPROBE_DEFER	517	/* Driver requests probe retry */
+#define EOPENSTALE	518	/* open found a stale dentry */
+#define ENOPARAM	519	/* Parameter not supported */
 
 const char *error2name(int errnum)
 {
@@ -46,7 +53,6 @@ const char *error2name(int errnum)
 				CASE(ENOSYS);
 				CASE(ENOTEMPTY);
 				CASE(ELOOP);
-				//CASE(EWOULDBLOCK);
 				CASE(ENOMSG);
 				CASE(EIDRM);
 				CASE(ECHRNG);
@@ -63,7 +69,6 @@ const char *error2name(int errnum)
 				CASE(ENOANO);
 				CASE(EBADRQC);
 				CASE(EBADSLT);
-				//CASE(EDEADLOCK);
 				CASE(EBFONT);
 				CASE(ENOSTR);
 				CASE(ENODATA);
@@ -131,6 +136,13 @@ const char *error2name(int errnum)
 				CASE(ENOMEDIUM);
 				CASE(EMEDIUMTYPE);
 				CASE(ERESTARTSYS);
+				CASE(ERESTARTNOINTR);
+				CASE(ERESTARTNOHAND);
+				CASE(ENOIOCTLCMD);
+				CASE(ERESTART_RESTARTBLOCK);
+				CASE(EPROBE_DEFER);
+				CASE(EOPENSTALE);
+				CASE(ENOPARAM);
 				default:
 				return ("Undefined error");
 		}
@@ -147,7 +159,7 @@ const char *error2description(int errnum)
 				case(ENXIO): return("No such device or address");
 				case(E2BIG): return("Arg list too long");
 				case(ENOEXEC): return("Exec format error");
-				case(EBADF): return("Bad file number");
+				case(EBADF): return("Bad file descriptor");
 				case(ECHILD): return("No child processes");
 				case(EAGAIN): return("Try again");
 				case(ENOMEM): return("Out of memory");
@@ -179,7 +191,6 @@ const char *error2description(int errnum)
 				case(ENOSYS): return("Function not implemented");
 				case(ENOTEMPTY): return("Directory not empty");
 				case(ELOOP): return("Too many symbolic links encountered");
-				//case(EWOULDBLOCK): return("Operation would block");
 				case(ENOMSG): return("No message of desired type");
 				case(EIDRM): return("Identifier removed");
 				case(ECHRNG): return("Channel number out of range");
@@ -261,6 +272,13 @@ const char *error2description(int errnum)
 				case(ENOMEDIUM): return("No medium found");
 				case(EMEDIUMTYPE): return("Wrong medium type");
 				case(ERESTARTSYS): return("To be restarted if SA_RESTART is set");
+				case(ERESTARTNOINTR): return("To be restarted if SA_RESTART is set");
+				case(ERESTARTNOHAND): return("restart if no handler..");
+				case(ENOIOCTLCMD): return("No ioctl command");
+				case(ERESTART_RESTARTBLOCK): return("restart by calling sys_restart_syscall");
+				case(EPROBE_DEFER): return("Driver requests probe retry");
+				case(EOPENSTALE): return("open found a stale dentry");
+				case(ENOPARAM): return("Parameter not supported");
 				default:
 								   return ("undefined description");
 		}
@@ -270,7 +288,7 @@ char		*get_error(unsigned long long int reg)
 {
 		char	*ret;
 
-		if ((unsigned int)reg == 0xfffffdfc)
+		if ((unsigned short)reg >= ERESTARTSYS && (unsigned int)reg <= ENOPARAM)
 		{
 			if (!(asprintf(&ret, "? %s (%s)", error2name(ERESTARTSYS), error2description(ERESTARTSYS))))
 				return (NULL);

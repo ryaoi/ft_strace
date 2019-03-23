@@ -41,6 +41,8 @@ typedef struct s_sys {
     int    (*handler)(pid_t, struct user_regs_struct, struct s_sys);
 }               t_sys;
 
+void			init_sigset(sigset_t *empty, sigset_t *mask);
+
 int				handle_signal(pid_t pid, int status, const t_sys sys[]);
 int             handle_read(pid_t pid, struct user_regs_struct regs, t_sys sys);
 int             handle_read32(pid_t pid, struct user_regs_struct regs, t_sys sys);

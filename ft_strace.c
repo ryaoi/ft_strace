@@ -78,83 +78,6 @@ static int					get_elfclass(char *binary_name)
 	return (ret);
 }
 
-static void					print_first_execve(pid_t child, int status, \
-												const t_sys sys[], \
-												sigset_t empty, \
-												sigset_t mask)
-{
-	struct user_regs_struct regs;
-	unsigned long long int	index_sys;
-	char					*ret;
-
-	if ((ptrace(PTRACE_SYSCALL, child, NULL, NULL)) < 0)
-	{
-		perror("ptrace");
-		exit(EXIT_FAILURE);
-	}
-	if ((waitpid(child, &status, 0)) < 0)
-	{
-		perror("waitpid");
-		exit(EXIT_FAILURE);
-	}
-    handle_signal(child, status, sys64);
-	ptrace(PTRACE_GETREGS, child, NULL, &regs);
-    index_sys = regs.orig_rax;
-	if (regs.orig_rax < (sizeof(sys64) / sizeof(sys64[0])))
-    	(*(sys64[regs.orig_rax].handler))(child, regs, sys64[regs.orig_rax]);
-	if ((ptrace(PTRACE_SYSCALL, child, NULL, NULL)) < 0)
-	{
-		perror("ptrace");
-		exit(EXIT_FAILURE);
-	}
-	if ((sigprocmask(SIG_SETMASK, &empty, NULL)) < 0)
-	{
-		perror("sigprocmask");
-		exit(EXIT_FAILURE);
-	}
-	if ((waitpid(child, &status, 0)) < 0)
-	{
-		perror("waitpid");
-		exit(EXIT_FAILURE);
-	}
-	if ((sigprocmask(SIG_BLOCK, &mask, NULL)) < 0)
-	{
-		perror("sigprocmask");
-		exit(EXIT_FAILURE);
-	}
-    handle_signal(child, status, sys64);
-	ptrace(PTRACE_GETREGS, child, NULL, &regs);
-    if (regs.orig_rax < (sizeof(sys64) / sizeof(sys64[0])))
-		ret = get_format(sys64[index_sys].ret, regs.rax, child);
-	else
-		ret = strdup("?");
-	dprintf(2, " = %s\n", ret);
-    if (ret)
-    	free(ret);
-    if (sys == sys32)
-    {
-		dprintf(2, "strace: [ Process PID=%d runs in 32 bit mode. ]\n", getpid());
-    }
-}
-
-static void					init_sigset(sigset_t *empty, sigset_t *mask)
-{
-	if ((sigemptyset(empty)) < 0 || (sigemptyset(mask)) < 0)
-	{
-		perror("sigemtypset");
-		exit(EXIT_FAILURE);
-	}
-	if (((sigaddset(mask, SIGHUP)) < 0) \
-		|| ((sigaddset(mask, SIGQUIT)) < 0) \
-		|| ((sigaddset(mask, SIGINT)) < 0) \
-		|| ((sigaddset(mask, SIGPIPE)) < 0) \
-		|| ((sigaddset(mask, SIGTERM)) < 0))
-	{
-		perror("sigaddset");
-		exit(EXIT_FAILURE);
-	}
-}
-
 static int					call_syscall(pid_t child, sigset_t *empty, \
 										sigset_t *mask, int status, const t_sys sys[])
 {
@@ -181,6 +104,56 @@ static int					call_syscall(pid_t child, sigset_t *empty, \
    	if ((handle_signal(child, status, sys)))
     	return (1);
     return (0);
+}
+
+
+static void					print_first_execve(pid_t child, int status, \
+												const t_sys sys[], \
+												sigset_t empty, \
+												sigset_t mask)
+{
+	struct user_regs_struct regs;
+	unsigned long long int	index_sys;
+	char					*ret;
+
+	call_syscall(child, &empty, &mask, status, sys);
+    handle_signal(child, status, sys64);
+	ptrace(PTRACE_GETREGS, child, NULL, &regs);
+    index_sys = regs.orig_rax;
+	if (regs.orig_rax < (sizeof(sys64) / sizeof(sys64[0])))
+    	(*(sys64[regs.orig_rax].handler))(child, regs, sys64[regs.orig_rax]);
+	call_syscall(child, &empty, &mask, status, sys);
+    handle_signal(child, status, sys64);
+	ptrace(PTRACE_GETREGS, child, NULL, &regs);
+    if (regs.orig_rax < (sizeof(sys64) / sizeof(sys64[0])))
+		ret = get_format(sys64[index_sys].ret, regs.rax, child);
+	else
+		ret = strdup("?");
+	dprintf(2, " = %s\n", ret);
+    if (ret)
+    	free(ret);
+    if (sys == sys32)
+    {
+		dprintf(2, "strace: [ Process PID=%d runs in 32 bit mode. ]\n", getpid());
+    }
+}
+
+void					init_sigset(sigset_t *empty, sigset_t *mask)
+{
+	if ((sigemptyset(empty)) < 0 || (sigemptyset(mask)) < 0)
+	{
+		perror("sigemtypset");
+		exit(EXIT_FAILURE);
+	}
+	if (((sigaddset(mask, SIGHUP)) < 0) \
+		|| ((sigaddset(mask, SIGQUIT)) < 0) \
+		|| ((sigaddset(mask, SIGINT)) < 0) \
+		|| ((sigaddset(mask, SIGPIPE)) < 0) \
+		|| ((sigaddset(mask, SIGTERM)) < 0))
+	{
+		perror("sigaddset");
+		exit(EXIT_FAILURE);
+	}
 }
 
 static void					trace_process(char *argv[], \

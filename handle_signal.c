@@ -1,9 +1,12 @@
 
 #include "ft_strace.h"
-#include <signal.h>
 
+#include <signal.h>
 #define SIGSTKFLT 16
 #define SIGPWR 30
+
+extern const t_sys sys32[385];
+extern const t_sys sys64[333];
 
 const char * signal2name(int sig)
 {
@@ -16,7 +19,7 @@ const char * signal2name(int sig)
 	CASE(SIGABRT);
 	CASE(SIGBUS);
 	CASE(SIGFPE);
-	CASE(SIGKILL); // can not be caught
+	CASE(SIGKILL);
 	CASE(SIGUSR1);
 	CASE(SIGSEGV);
 	CASE(SIGUSR2);
@@ -26,7 +29,7 @@ const char * signal2name(int sig)
 	CASE(SIGSTKFLT); 
 	CASE(SIGCHLD);
 	CASE(SIGCONT);
-	CASE(SIGSTOP); // can not be caught
+	CASE(SIGSTOP);
 	CASE(SIGTSTP);
 	CASE(SIGTTIN);
 	CASE(SIGTTOU);
@@ -74,21 +77,6 @@ const char *code2name(int code)
 	}
 }
 
-/*
-#define SEGV_MAPERR	1	
-#define SEGV_ACCERR	2	
-#define SEGV_BNDERR	3
-#ifdef __ia64__
-# define __SEGV_PSTKOVF	4	
-#else
-# define SEGV_PKUERR	4	
-#endif
-#define SEGV_ACCADI	5	
-#define SEGV_ADIDERR	6	
-#define SEGV_ADIPERR	7	
-#define NSIGSEGV	7
-*/
-
 const char *segvcode2name(int code)
 {
 	switch (code){
@@ -96,12 +84,36 @@ const char *segvcode2name(int code)
 	CASE(SEGV_ACCERR);
 	CASE(SEGV_BNDERR);
 	CASE(SEGV_PKUERR);
-	//CASE(SEGV_ACCADI);
-	//CASE(SEGV_ADIDERR);
-	//CASE(SEGV_ADIPERR);
-	//CASE(NSIGSEGV);
 	default:
 		return ("Undefined code");
+	}
+}
+
+static void	syscall_sig(pid_t child, int status, siginfo_t sig)
+{
+	sigset_t				empty;
+	sigset_t				mask;
+
+	init_sigset(&empty, &mask);
+	if ((ptrace(PTRACE_SYSCALL, child, NULL, sig.si_signo)) < 0)
+	{
+		perror("ptrace");
+		exit(EXIT_FAILURE);
+	}
+	if ((sigprocmask(SIG_SETMASK, &empty, NULL)) < 0)
+	{
+		perror("sigprocmask");
+		exit(EXIT_FAILURE);
+	}
+	if ((waitpid(child, &status, 0)) < 0)
+	{
+		perror("waitpid");
+		exit(EXIT_FAILURE);
+	}
+	if ((sigprocmask(SIG_BLOCK, &mask, NULL)) < 0)
+	{
+		perror("sigprocmask");
+		exit(EXIT_FAILURE);
 	}
 }
 
@@ -113,26 +125,39 @@ static void	print_syscall_sig(pid_t child, int status, const t_sys sys[], \
 	unsigned long long int sys_index;
 	struct user_regs_struct regs;
 
-	ptrace(PTRACE_SYSCALL, child, NULL, sig.si_signo);
-	waitpid(child, &status, 0);
-	ptrace(PTRACE_GETREGS, child, NULL, &regs);
-	sys_index = regs.orig_rax;
-	printed = (*(sys[regs.orig_rax].handler))(child, regs, sys[regs.orig_rax]);
-	ptrace(PTRACE_SYSCALL, child, NULL, sig.si_signo);
-	waitpid(child, &status, 0);
-	ptrace(PTRACE_GETREGS, child, NULL, &regs);
-	if ((long long int)regs.rax >= 0)
-		ret = get_format(sys[sys_index].ret, regs.rax, child);
-	else
-		ret = get_error(regs.rax);
-	if (printed > 40)
-		dprintf(2, " = %s\n", ret);
-	else
-		dprintf(2, "%*c = %s\n", 40 - printed, ' ', ret);
-	if (ret)
-		free(ret);
-	ptrace(PTRACE_SYSCALL, child, NULL, sig.si_signo);
-	waitpid(child, &status, 0);
+	while (1)
+	{
+		syscall_sig(child, status, sig);
+		ptrace(PTRACE_GETREGS, child, NULL, &regs);
+		sys_index = regs.orig_rax;
+		if (sys == sys32)
+		{
+			if (sys_index >= (sizeof(sys32) / sizeof(sys32[0])))
+			{
+				return ;
+			}
+		}
+		else
+		{
+			if (sys_index >= (sizeof(sys64) / sizeof(sys64[0])))
+			{
+				return ;
+			}
+		}
+		printed = (*(sys[regs.orig_rax].handler))(child, regs, sys[regs.orig_rax]);
+		syscall_sig(child, status, sig);
+		ptrace(PTRACE_GETREGS, child, NULL, &regs);
+		if ((long long int)regs.rax >= 0)
+			ret = get_format(sys[sys_index].ret, regs.rax, child);
+		else
+			ret = get_error(regs.rax);
+		if (printed > 40)
+			dprintf(2, " = %s\n", ret);
+		else
+			dprintf(2, "%*c = %s\n", 40 - printed, ' ', ret);
+		if (ret)
+			free(ret);
+	}
 }
 
 int			handle_signal(pid_t child, int status, const t_sys sys[])
@@ -141,13 +166,13 @@ int			handle_signal(pid_t child, int status, const t_sys sys[])
 
 	if (WIFEXITED(status))
 	{
-		printf("%*c= ?\n", 28, ' ');
-		printf("+++ exited with %d +++\n", WEXITSTATUS(status));
+		dprintf(2, "%*c= ?\n", 28, ' ');
+		dprintf(2, "+++ exited with %d +++\n", WEXITSTATUS(status));
 		exit(0);
 	}
 	else if (WIFSIGNALED(status))
 	{
-		printf("+++ killed by %s +++\n", signal2name(WTERMSIG(status)));
+		dprintf(2, "+++ killed by %s +++\n", signal2name(WTERMSIG(status)));
 		exit(0);
 	}
 	if ((WIFSTOPPED(status)))
@@ -160,7 +185,6 @@ int			handle_signal(pid_t child, int status, const t_sys sys[])
 				dprintf(2, "--- %s {si_signo=%s, si_code=%s, si_pid=%d, si_uid=%d, si_status=%d, si_utime=%ld, si_stime=%ld} ---\n", \
 						signal2name(sig.si_signo), signal2name(sig.si_signo), childcode2name(sig.si_code), \
 						sig.si_pid, sig.si_uid, sig.si_status, sig.si_utime, sig.si_stime);
-				//print_syscall_sig(child, status, sys, sig);
 				return (1);
 			}
 			else if (sig.si_signo == SIGSEGV)
